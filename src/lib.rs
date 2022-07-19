@@ -1,13 +1,13 @@
 use std::error::Error;
 use std::fs;
 
-pub struct Config {
+pub struct Args {
     pub address: String,
     pub wql : String,
 }
 
-impl Config {
-    pub fn new(args: &[String]) -> Result<Config, &str> {        
+impl Args {
+    pub fn new(args: &[String]) -> Result<Args, &str> {        
         if args.len() != 3 {
             return Err("Wrong number of arguments, expected at least 2");
         }
@@ -15,7 +15,6 @@ impl Config {
         //filter args that starts with "-"
         let mut args = args.iter().filter(|arg| arg.chars().next().unwrap() != '-').collect::<Vec<&String>>();
 
-        // find arg that stats with "//"
         let address_index = args.iter().position(|arg| arg.starts_with("//"));
 
         let address = match address_index {
@@ -23,7 +22,8 @@ impl Config {
                 let address = args[index].clone();
                 args.remove(index);
 
-                address[2..].to_string()
+                
+                address[2..].to_string() 
             },
             None => return Err("No address specified"),
         };
@@ -31,14 +31,15 @@ impl Config {
         let wql = args[1].clone();
 
     
-        Ok(Config { address, wql })
+        Ok(Args { address, wql })
     }
 }
 
-pub fn run(config: Config) -> Result<(), Box<dyn Error>> {
-    let contents = fs::read_to_string(config.wql)?;
+pub fn run(args: Args) -> Result<(), Box<dyn Error>> {
+    // let contents = fs::read_to_string(args.wql)?;
     
-    println!("With text:\n{}", contents);
+    println!("Address: {}", args.address);
+    println!("WQL: {}", args.wql);
 
     Ok(())
 }
@@ -48,22 +49,22 @@ mod test {
     use super::*;
     
     #[test]
-    fn test_config_new() {
+    fn test_args_new() {
         let args = vec!["wmic".to_string(), "//localhost".to_string(), "select * from Win32_ComputerSystem".to_string()];
 
-        let config = Config::new(&args).unwrap();
+        let args = Args::new(&args).unwrap();
         
-        assert_eq!(config.address, "localhost");
-        assert_eq!(config.wql, "select * from Win32_ComputerSystem");
+        assert_eq!(args.address, "localhost");
+        assert_eq!(args.wql, "select * from Win32_ComputerSystem");
     }
 
     #[test]
-    fn test_config_diferent_order() {
+    fn test_args_diferent_order() {
         let args = vec!["wmic".to_string(), "select * from Win32_ComputerSystem".to_string(), "//localhost".to_string() ];
 
-        let config = Config::new(&args).unwrap();
+        let args = Args::new(&args).unwrap();
         
-        assert_eq!(config.address, "localhost");
-        assert_eq!(config.wql, "select * from Win32_ComputerSystem");
+        assert_eq!(args.address, "localhost");
+        assert_eq!(args.wql, "select * from Win32_ComputerSystem");
     }
 }

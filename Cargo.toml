@@ -6,3 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+snafu = "0.7"
+rustls = { version = "0.20", features = ["dangerous_configuration"] }
+rustls-pemfile = "0.3"
