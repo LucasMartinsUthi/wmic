@@ -1,125 +1,104 @@
+
+
+use tokio::io::{AsyncWriteExt, AsyncReadExt, BufReader};
+use serde::{Serialize, Deserialize};
+use tokio::net::TcpStream;
+
 use std::env;
 use std::process;
-use std::io::BufReader;
-use std::include_bytes;
 
 use snafu::prelude::*;
 
-use rustls::{ClientConfig, PrivateKey, Certificate};
-use rustls_pemfile::{certs, pkcs8_private_keys};
-use tokio_rustls::rustls::{self, OwnedTrustAnchor};
-use tokio_rustls::{webpki, TlsConnector};
-use std::net::TcpStream;
+use std::collections::HashMap;
+use wmi::Variant;
 
-use std::fs::File;
 
 use wmic::{Args};
+
+
+#[derive(Serialize, Deserialize, Debug)]
+struct QueryWMI {
+    wql: String,
+    password: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+enum QueryResultStatus {
+    Success,
+    Failure,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct QueryResult {
+    items: Vec<HashMap<String, String>>,
+    status: QueryResultStatus,
+    message: String,
+}
 
 #[derive(Debug, Snafu)]
 pub enum Error {
 	#[snafu(display("IO error: {source}"))]
 	Io { source: std::io::Error },
-	#[snafu(display("TLS error: {source}"))]
-	Tls { source: rustls::Error },
+    #[snafu(display("Serde error: {source}"))]
+	Serde { source: serde_json::Error },
 	#[snafu(display("No private keys in key file"))]
 	NoPrivateKeys,
+    #[snafu(display("Error addrs"))]
+	ErrorAddrs,
 }
 
 type Result<T> = std::result::Result<T, Error>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let args: Vec<String> = env::args().collect();
 
-    let mut root_cert_store = rustls::RootCertStore::empty();
-
-    let cert_file = include_bytes!("../server.pem") as &[u8];
-    let mut cert_file_rdr = BufReader::new(cert_file);
-    let certs = certs(&mut cert_file_rdr).context(IoSnafu)?;
-
-    let trust_anchors = certs.iter().map(|cert| {
-        let ta = webpki::TrustAnchor::try_from_cert_der(&cert[..]).unwrap();
-        OwnedTrustAnchor::from_subject_spki_name_constraints(
-            ta.subject,
-            ta.spki,
-            ta.name_constraints,
-        )
+    let args = Args::new(&args).unwrap_or_else(|err| {
+        println!("Problem parsing arguments: {}", err);
+        process::exit(1);
     });
-    root_cert_store.add_server_trust_anchors(trust_anchors);
 
+    let mut stream = TcpStream::connect("127.0.0.1:7743").await.context(IoSnafu)?;
+
+    let query = QueryWMI {
+        // wql: args.wql,
+        wql: "select * from Win32_ComputerSystem".to_string(),
+        password: "secret".to_string(),
+    };
+    let query = serde_json::to_string(&query).context(SerdeSnafu)?;
+    let query_bytes = query.as_bytes();
+
+    let query_len = query_bytes.len() as u32;
+    let query_len_bytes: [u8; 4] = query_len.to_be_bytes();
+
+    stream.write(&query_len_bytes).await.context(IoSnafu)?;
+    stream.write(query_bytes).await.context(IoSnafu)?;
+
+
+    // read all response 
+    let mut reader = BufReader::new(stream);
+    let mut response = String::new();
+    reader.read_to_string(&mut response).await.context(IoSnafu)?;
     
+    // response to json
+    let response: QueryResult  = serde_json::from_str(&response).context(SerdeSnafu)?;
+    
+    //get item keys from first item
+    let mut keys = Vec::new();
+    for (key, _) in response.items[0].iter() {
+        keys.push(key.to_string());
+    }
+    println!("{}", keys.join("|"));
+
+
+    // loop over items and print there values
+    for item in response.items {
+        for value in item.values() {
+            print!("{:?}|", value);
+        }
+    }
 
     Ok(())
 }
-
-// fn main() -> Result<()> {
-//     let args: Vec<String> = env::args().collect();
-
-//     let args = Args::new(&args).unwrap_or_else(|err| {
-//         println!("Problem parsing arguments: {}", err);
-//         process::exit(1);
-//     });
-
-
-//     let key_file = include_bytes!("../server.key") as &[u8];
-    
-//     let mut key_file_rdr = BufReader::new(key_file);
-//     let mut keys = pkcs8_private_keys(&mut key_file_rdr).context(IoSnafu)?;
-
-// 	if keys.is_empty() { return Err(Error::NoPrivateKeys) };
-
-
-//     let key = PrivateKey(keys.remove(0));
-
-//     let cert_file = include_bytes!("../server.pem") as &[u8];
-//     let mut cert_file_rdr = BufReader::new(cert_file);
-//     let certs = certs(&mut cert_file_rdr).context(IoSnafu)?;
-
-//     let root_certs = rustls::RootCertStore::empty();
-
-//     let config = ClientConfig::builder()
-//         .with_safe_defaults()
-//         .with_root_certificates(root_certs)
-//         .with_no_client_auth();
-//         // .with_single_cert(certs.into_iter().map(Certificate).collect(), key).context(TlsSnafu)?;
-
-//     let server_name = &args.address
-//         .try_into()
-//         .expect("invalid address name");
-
-//     let mut conn = rustls::ClientConnection::new(Arc::clone(config), server_name).unwrap();
-//     let mut sock = TcpStream::connect(format!("{}:443", domain_name)).unwrap();
-        
-//     let mut stream = rustls::Stream::new(&mut conn, &mut sock);
-
-//     let mut plaintext = Vec::new();
-//     stream
-//         .read_to_end(&mut plaintext)
-//         .unwrap();
-//     stdout().write_all(&plaintext).unwrap();
-
-//     // let acceptor = TlsAcceptor::from(Arc::new(config));
-
-
-    
-//     // let tcp_addrs = format!("0.0.0.0:{}", "7744");
-    
-//     // let listener = TcpListener::bind(tcp_addrs).await.context(IoSnafu)?;
-        
-
-//     // let (socket, _addr) = listener.accept().await.unwrap();
-
-//     // let mut stream = acceptor.accept(socket).await.unwrap();
-
-//     // stream.write("aaaa".as_bytes()).await.unwrap();
-//     // stream.flush().await.unwrap();
-
-
-//     // if let Err(e) = wmic::run(config) {
-//     //     println!("Problem TLS: {}", e);
-//     //     process::exit(1);
-//     // };
-
-//     Ok(())
-// }
 
 
