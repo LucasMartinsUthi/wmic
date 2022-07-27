@@ -5,7 +5,10 @@ use serde::{Serialize, Deserialize};
 use tokio::net::TcpStream;
 
 use std::env;
+use std::fmt;
+use std::fmt::write;
 use std::process;
+use std::io::{self, Write};
 
 use snafu::prelude::*;
 
@@ -15,6 +18,39 @@ use wmi::Variant;
 
 use wmic::{Args};
 
+#[derive(Serialize, Deserialize, Debug)]
+struct MonstaVariant(Variant);
+
+impl fmt::Display for MonstaVariant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        
+        match self.0 {
+            Variant::Empty => write!(f, "Empty"),
+            Variant::Null => write!(f, "Null"),
+            Variant::String(ref s) => write!(f, "{}", s),
+            Variant::I1(i) => write!(f, "{}", i),
+            Variant::I2(i) => write!(f, "{}", i),
+            Variant::I4(i) => write!(f, "{}", i),
+            Variant::I8(i) => write!(f, "{}", i),
+            Variant::R4(i) => write!(f, "{}", i),
+            Variant::R8(i) => write!(f, "{}", i),
+            Variant::Bool(b) => write!(f, "{}", b),
+            Variant::UI1(i) => write!(f, "{}", i),
+            Variant::UI2(i) => write!(f, "{}", i),
+            Variant::UI4(i) => write!(f, "{}", i),
+            Variant::UI8(i) => write!(f, "{}", i),
+            Variant::Array(ref v) => {
+                write!(f, "[")?;
+                // for i in v {
+                //     // let monsta_variant = MonstaVariant(i);
+                //     // write!(f, "{}", monsta_variant)?;
+                // }
+                write!(f, "]")
+            }
+
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 struct QueryWMI {
@@ -30,7 +66,7 @@ enum QueryResultStatus {
 
 #[derive(Serialize, Deserialize, Debug)]
 struct QueryResult {
-    items: Vec<HashMap<String, String>>,
+    items: Vec<HashMap<String, MonstaVariant>>,
     status: QueryResultStatus,
     message: String,
 }
@@ -65,6 +101,7 @@ async fn main() -> Result<()> {
         wql: "select * from Win32_ComputerSystem".to_string(),
         password: "secret".to_string(),
     };
+
     let query = serde_json::to_string(&query).context(SerdeSnafu)?;
     let query_bytes = query.as_bytes();
 
@@ -81,6 +118,7 @@ async fn main() -> Result<()> {
     reader.read_to_string(&mut response).await.context(IoSnafu)?;
     
     // response to json
+    // println!("{}", response);
     let response: QueryResult  = serde_json::from_str(&response).context(SerdeSnafu)?;
     
     //get item keys from first item
@@ -94,7 +132,7 @@ async fn main() -> Result<()> {
     // loop over items and print there values
     for item in response.items {
         for value in item.values() {
-            print!("{:?}|", value);
+            print!("{}|", value);
         }
     }
 
