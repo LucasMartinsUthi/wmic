@@ -57,13 +57,13 @@ async fn main() -> Result<()> {
         process::exit(1);
     });
 
-    let mut stream = TcpStream::connect(format!("{}:7743", args.address)).await.context(IoSnafu)?;
-
     let query = QueryWMI {
-        // wql: "select * from Win32_ComputerSystem".to_string(),
         wql: args.wql,
         password: String::new(),
     };
+
+    
+    let mut stream = TcpStream::connect(format!("{}:7743", args.address)).await.context(IoSnafu)?;
 
     let query = serde_json::to_string(&query).context(SerdeSnafu)?;
     let query_bytes = query.as_bytes();
@@ -92,16 +92,23 @@ async fn main() -> Result<()> {
     }
 
     let mut keys = Vec::new();
-    let mut values = Vec::new();
-
-    for (key, value) in response.items[0].iter() {
+    for (key, _) in response.items[0].iter() {
         keys.push(key.to_string());
-        values.push(value.to_string());
-        
     }
 
+    println!("");
     println!("{}", keys.join("|"));
-    println!("{}", values.join("|"));
+
+
+    for item in response.items.iter(){
+        let mut values = Vec::new();
+
+        for value in item.values() {
+            values.push(value.to_string());
+        }
+
+        println!("{}", values.join("|"));
+    }
 
     Ok(())
 }
