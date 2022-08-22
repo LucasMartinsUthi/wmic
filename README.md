@@ -17,5 +17,7 @@ Extraindo o executavel
 
 ## Comandos uteis
 
-`cargo run -- //127.0.0.1 "select Name from Win32_Service"`
-`./wmic -U usuario%senha //192.168.65.2 "select Name from Win32_Service"`
+`
+cargo run -- //127.0.0.1 "select Name from Win32_Service"
+./wmic -U usuario%senha //192.168.65.2 "select Name from Win32_Service"
+`
